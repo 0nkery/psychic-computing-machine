@@ -3,14 +3,14 @@ defmodule Deribit.Pipeline.Streamer do
 
   require Logger
 
+  alias Deribit.Pipeline.Event
+  alias Deribit.Pipeline.Config
+
   alias Deribit.Utils.JsonRpc2Client
   alias Deribit.Utils.GenStageBuffer
   alias Deribit.Utils.PeriodicMessage
 
   @start_client PeriodicMessage.new(1000 * 60)
-
-  @deribit_api_url "wss://www.deribit.com/ws/api/v2/"
-  @deribit_channel "trades.BTC-PERPETUAL.raw"
 
   defmodule State do
     defstruct [:buf, client: :none]
@@ -46,10 +46,13 @@ defmodule Deribit.Pipeline.Streamer do
   @impl true
 
   def handle_info(@start_client, %State{client: :none} = state) do
-    {:ok, client} = JsonRpc2Client.start_link(@deribit_api_url)
+    {:ok, client} = Config.api_url() |> JsonRpc2Client.start_link()
     state = %{state | client: client}
 
-    {:ok, _result} = subscribe(client, @deribit_channel)
+    pair = Config.pair()
+    channel = "trades.#{pair}.raw"
+
+    subscribe(client, channel)
 
     noreply_push_events(state)
   end
@@ -68,6 +71,11 @@ defmodule Deribit.Pipeline.Streamer do
     noreply_push_events(state)
   end
 
+  def handle_info({_id, {:ok, _result}}, state) do
+    Logger.info("Successfully connected to Deribit!")
+    noreply_push_events(state)
+  end
+
   # Impl
 
   def noreply_push_events(state, demand \\ 0) do
@@ -77,7 +85,7 @@ defmodule Deribit.Pipeline.Streamer do
   end
 
   def subscribe(client, channel) do
-    JsonRpc2Client.call(client, "public/subscribe", %{channels: [channel]})
+    JsonRpc2Client.cast(client, "public/subscribe", %{channels: [channel]})
   end
 
   def parse_many_events(%{"params" => %{"data" => events}}) do
@@ -88,10 +96,14 @@ defmodule Deribit.Pipeline.Streamer do
   def parse_many_events(_else), do: []
 
   def parse_event(event) do
-    %{
+    ts = event["timestamp"]
+    dt = ts |> Timex.from_unix(:millisecond)
+
+    %Event{
       trade_id: event["trade_id"],
       price: event["price"] |> Decimal.from_float(),
-      timestamp: event["timestamp"],
+      datetime: dt,
+      timestamp: ts,
       instrument_name: event["instrument_name"]
     }
   end

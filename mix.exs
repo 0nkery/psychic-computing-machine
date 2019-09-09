@@ -25,7 +25,10 @@ defmodule Deribit.MixProject do
       {:websockex, "~> 0.4"},
       {:jason, "~> 1.1"},
       {:gen_stage, "~> 0.14"},
-      {:decimal, "~> 1.8"}
+      {:flow, "~> 0.14"},
+      {:decimal, "~> 1.8"},
+      {:timex, "~> 3.6"},
+      {:instream, "~> 0.21"}
     ]
   end
 end

@@ -5,9 +5,15 @@ defmodule Deribit.Application do
 
   use Application
 
+  @streamer Deribit.Pipeline.Streamer
+  @one_minute_aggregator Deribit.Pipeline.OneMinuteAggregator
+
   def start(_type, _args) do
     children = [
-      Deribit.Pipeline.Streamer
+      Deribit.InfluxDBConnection,
+      # Stock data processing pipeline
+      {@streamer, name: @streamer},
+      {@one_minute_aggregator, producer: @streamer}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

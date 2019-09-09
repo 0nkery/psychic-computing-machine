@@ -1,0 +1,11 @@
+version: "3.2"
+
+services:
+  influx:
+    image: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=stock
+    volumes:
+      - ".docker:/var/lib/influxdb"

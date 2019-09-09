@@ -32,21 +32,6 @@ defmodule Deribit.Utils.JsonRpc2Client do
     id
   end
 
-  def call(client, method, params, timeout \\ 5000) do
-    id = cast(client, method, params)
-
-    receive do
-      {^id, reply} ->
-        reply
-
-      msg ->
-        {:error, {:unexpected_message, msg}}
-    after
-      timeout ->
-        {:error, :timeout}
-    end
-  end
-
   # Impl
 
   @impl true
