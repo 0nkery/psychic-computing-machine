@@ -6,7 +6,7 @@ config :logger, :console,
   format: "\n$time $metadata[$level] $levelpad$message\n",
   metadata: [:application, :query_time, :response_status]
 
-config :deribit, MyApp.MyConnection,
+config :deribit, Deribit.InfluxDBConnection,
   database: "stock",
   host: "localhost",
   http_opts: [insecure: true],

@@ -20,3 +20,17 @@ defmodule Deribit.Pipeline.Event do
   @enforce_keys [:trade_id, :price, :datetime, :timestamp, :instrument_name]
   defstruct [:trade_id, :price, :datetime, :timestamp, :instrument_name]
 end
+
+defmodule Deribit.Pipeline.OneMinuteSeries do
+  use Instream.Series
+
+  series do
+    database("stock")
+    measurement("ohlc_1m")
+
+    field(:open)
+    field(:high)
+    field(:low)
+    field(:close)
+  end
+end

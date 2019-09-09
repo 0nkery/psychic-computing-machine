@@ -4,6 +4,9 @@ defmodule Deribit.Pipeline.OneMinuteAggregator do
   require Logger
 
   alias Deribit.Pipeline.Block
+  alias Deribit.Pipeline.OneMinuteSeries
+  alias Deribit.Pipeline.Timeframes
+  alias Deribit.InfluxDBConnection
 
   # Interface
 
@@ -17,17 +20,35 @@ defmodule Deribit.Pipeline.OneMinuteAggregator do
   def init(producer) do
     Logger.info("Starting #{__MODULE__}...")
 
+    Logger.info("Setting up continuous queries...")
+
+    Timeframes.frame_queries()
+    |> Enum.each(fn q ->
+      result = InfluxDBConnection.execute(q, method: :post)
+
+      Logger.info("""
+        #{q}
+        =>
+
+        #{inspect(result)}
+      """)
+    end)
+
     window =
       Flow.Window.fixed(1, :minute, fn event ->
         event.timestamp
       end)
 
-    window = window |> Flow.Window.allowed_lateness(5, :second)
+    window =
+      window
+      |> Flow.Window.allowed_lateness(5, :second)
+      # Flush all the stuck windows every 2 minutes
+      |> Flow.Window.trigger_periodically(2, :minute)
 
     {:ok, flow} =
       [producer]
-      |> Flow.from_stages()
-      |> Flow.partition(window: window)
+      |> Flow.from_stages(max_demand: 10)
+      |> Flow.partition(window: window, stages: 1)
       |> Flow.reduce(fn -> :empty end, fn event, block ->
         block =
           case block do
@@ -72,22 +93,47 @@ defmodule Deribit.Pipeline.OneMinuteAggregator do
 
         block
       end)
-      |> Flow.emit(:state)
+      |> Flow.on_trigger(fn
+        state, _index, {:fixed, _ts, :watermark} ->
+          {[], state}
+
+        state, _index, {:fixed, _ts, :done} ->
+          {[state], :empty}
+
+        state, _index, {:fixed, _ts, {:periodically, _count, _unit}} ->
+          {[state], :empty}
+      end)
       |> Flow.into_stages([])
 
-    {:consumer, :ignore, subscribe_to: [{flow, cancel: :transient}]}
+    {:consumer, :ignore, subscribe_to: [{flow, cancel: :transient, max_demand: 1}]}
   end
 
   def handle_events(events, _from, state) do
-    Enum.each(events, &handle_event/1)
+    points =
+      events
+      |> Enum.reject(fn event -> event == :empty end)
+      |> Enum.map(fn event -> InfluxDBConnection.convert_event_to(event, OneMinuteSeries) end)
+
+    case points do
+      [] ->
+        nil
+
+      points ->
+        case InfluxDBConnection.write(points) do
+          :ok ->
+            nil
+
+          %{error: reason} ->
+            Logger.error("Failed to save point: #{reason}")
+        end
+    end
+
     {:noreply, [], state}
   end
 
-  defp handle_event(event) do
-  end
-
-  defp round_to_minute(datetime) do
+  def round_to_minute(datetime) do
     {{datetime.year, datetime.month, datetime.day}, {datetime.hour, datetime.minute, 0}}
-    |> Timex.to_unix()
+    |> Timex.to_datetime()
+    |> DateTime.to_unix(:nanosecond)
   end
 end

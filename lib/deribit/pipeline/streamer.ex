@@ -5,10 +5,12 @@ defmodule Deribit.Pipeline.Streamer do
 
   alias Deribit.Pipeline.Event
   alias Deribit.Pipeline.Config
+  alias Deribit.Pipeline.EventSeries
 
   alias Deribit.Utils.JsonRpc2Client
   alias Deribit.Utils.GenStageBuffer
   alias Deribit.Utils.PeriodicMessage
+  alias Deribit.InfluxDBConnection
 
   @start_client PeriodicMessage.new(1000 * 60)
 
@@ -62,9 +64,10 @@ defmodule Deribit.Pipeline.Streamer do
   end
 
   def handle_info({:sub, event}, state) do
+    events = event |> parse_many_events()
+
     buf =
-      event
-      |> parse_many_events()
+      events
       |> GenStageBuffer.store_many(state.buf)
 
     state = %{state | buf: buf}
