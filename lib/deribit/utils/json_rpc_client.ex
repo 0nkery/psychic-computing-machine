@@ -8,24 +8,32 @@ defmodule Deribit.Utils.JsonRpc2Client do
   require Logger
 
   defmodule State do
+    @enforce_keys [:forward_to]
     defstruct [:forward_to, inflight_requests: %{}]
   end
 
   # Interface
 
   def start_link(url, opts \\ []) do
-    forward_to = opts |> Keyword.pop(:forward_to, self())
+    {forward_to, opts} = opts |> Keyword.pop(:forward_to, self())
     state = %State{forward_to: forward_to}
     WebSockex.start_link(url, __MODULE__, state, opts)
   end
 
-  def cast(client, method, params, id \\ :none) do
+  def cast(client, method, params) do
     from = self()
+
+    id =
+      DateTime.utc_now()
+      |> DateTime.to_unix(:nanosecond)
+
     WebSockex.cast(client, {:call, %{method: method, params: params, id: id, from: from}})
+
+    id
   end
 
-  def call(client, method, params, id \\ false, timeout \\ 5000) do
-    cast(client, method, params, id)
+  def call(client, method, params, timeout \\ 5000) do
+    id = cast(client, method, params)
 
     receive do
       {^id, reply} ->
@@ -42,26 +50,13 @@ defmodule Deribit.Utils.JsonRpc2Client do
   # Impl
 
   @impl true
-
   def handle_cast({:call, msg}, state) do
-    {_id, msg} =
-      msg
-      |> Map.get_and_update(:id, fn
-        :none ->
-          DateTime.utc_now()
-          |> DateTime.to_unix(:nanosecond)
-
-        otherwise ->
-          otherwise
-      end)
-
     {from, msg} = msg |> Map.pop(:from)
 
     case msg |> Jason.encode() do
       {:ok, frame} ->
         state =
-          state
-          |> update_in([:inflight_requests], fn rqs ->
+          Map.update(state, :inflight_requests, %{}, fn rqs ->
             rqs
             |> Map.put(msg.id, from)
           end)
@@ -75,7 +70,6 @@ defmodule Deribit.Utils.JsonRpc2Client do
   end
 
   @impl true
-
   def handle_frame({:text, frame}, state) do
     case Jason.decode(frame) do
       {:ok, %{"id" => id} = frame} ->

@@ -23,7 +23,9 @@ defmodule Deribit.MixProject do
   defp deps do
     [
       {:websockex, "~> 0.4"},
-      {:jason, "~> 1.1"}
+      {:jason, "~> 1.1"},
+      {:gen_stage, "~> 0.14"},
+      {:decimal, "~> 1.8"}
     ]
   end
 end

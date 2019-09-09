@@ -7,8 +7,7 @@ defmodule Deribit.Application do
 
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: Deribit.Worker.start_link(arg)
-      # {Deribit.Worker, arg}
+      Deribit.Pipeline.Streamer
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
